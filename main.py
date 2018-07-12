@@ -1,5 +1,6 @@
 import pygame as pg, sys, math, random as rnd
 from pygame.locals import *
+from game_instance import GameInstance
 
 
 class Piece(pg.sprite.Sprite):
@@ -43,14 +44,17 @@ class Piece(pg.sprite.Sprite):
 class AttackerPiece(Piece):
 	def __init__(self, width, grid, square):
 		Piece.__init__(self, width, grid, square, ("sprites\\attacker%d.png" % rnd.randint(1,3)) )
+		self.type = -1
 
 class DefenderPiece(Piece):
 	def __init__(self, width, grid, square):
-		Piece.__init__(self, width, grid, square, ("sprites\\defender%d.png" % rnd.randint(1,2)) )
+		Piece.__init__(self, width, grid, square, ("sprites\\defender%d.png" % rnd.randint(1,3)) )
+		self.type = 1
 
 class KingPiece(Piece):
 	def __init__(self, width, grid, square):
 		Piece.__init__(self, width, grid, square, "sprites\\king.png")
+		self.type = 2
 
 
 
@@ -97,6 +101,11 @@ grid = {'inner_margin': grid_inner_margin, 'square_width': grid_square_width, 's
 grid['inner_margin'] = round(grid['inner_margin'] * board_scale_ratio) #+ outer_margin
 grid['square_width'] = round(grid['square_width'] * board_scale_ratio)
 
+# Шрифт
+fontSize = 32
+fontColor = (255,255,255)
+myFont = pg.font.Font("freesansbold.ttf", fontSize)
+
 
 def get_board_square(mouse_pos):
 	square = (math.ceil((mouse_pos[0] - grid['inner_margin'] - outer_margin) / grid['square_width']), math.ceil((mouse_pos[1] - grid['inner_margin'] - outer_margin) / grid['square_width']))
@@ -111,31 +120,52 @@ def get_square_coordinates(square):
 	else:
 		return (round(grid['square_width']*(square[0]-1) + grid['inner_margin'] + outer_margin), round(grid['square_width']*(square[1]-1) + grid['inner_margin'] + outer_margin))
 
+def set_up_board(pieces, squares):
+	pieces.empty()
+	for s in squares[0]:
+		p = AttackerPiece(grid['square_width'], grid, s)
+		pieces.add(p)
+	for s in squares[1]:
+		p = DefenderPiece(grid['square_width'], grid, s)
+		pieces.add(p)
+	for s in squares[2]:
+		p = KingPiece(grid['square_width'], grid, s)
+		pieces.add(p)
 
-# Шрифт
-fontSize = 32
-fontColor = (255,255,255)
-myFont = pg.font.Font("freesansbold.ttf", fontSize)
+def get_sprite_by_square(square):
+	sprite = None
+	for s in pieces.sprites():
+		if s.square == square:
+			sprite = s
+			break
+	if sprite is None:
+		raise Exception('could not find piece in (%d, %d)' % square)
+	else:
+		return sprite
+
+# Инициализация объекта игровой партии
+game_instance = GameInstance()
 
 # Инициализация спрайтов
 pieces = pg.sprite.Group()
-attackers_squares = [(1,3), (1,4), (1,5), (2,4), (3,1), (3,7), (4,1), (4,2), (4,6), (4,7), (5,1), (5,7), (6,4), (7,3), (7,4), (7,5)]
-for s in attackers_squares:
-	p = AttackerPiece(grid['square_width'], grid, s)
-	pieces.add(p)
-defenders_squares = [(3,3), (3,4), (3,5), (4,3), (4,5), (5,3), (5,4), (5,5)]
-for s in defenders_squares:
-	p = DefenderPiece(grid['square_width'], grid, s)
-	pieces.add(p)
-kings_squares = [(4,4)]
-p = KingPiece(grid['square_width'], grid, (4,4))
-pieces.add(p)
+set_up_board(pieces, game_instance.get_current_setup())
+
+selected_piece = None
 
 mainLoop = True
-
-moving_piece = None
-
 while mainLoop:
+	
+	# Обновление информации о координатах квадрата под курсором
+	current_square = get_board_square(pg.mouse.get_pos())
+	# Обновление информации о состоянии партии
+	current_turn = game_instance.get_current_turn()
+	victory_reason = game_instance.get_victory_reason()
+	
+	if victory_reason is None:
+		text = "%s's turn" % ("Defender" if current_turn > 0 else "Attacker")
+	else:
+		fontColor = (255,0,0)
+		text = victory_reason
 	
 	# События
 	for event in pg.event.get():
@@ -145,39 +175,62 @@ while mainLoop:
 		if event.type == pg.KEYDOWN:
 			if event.key == pg.K_ESCAPE:
 				mainLoop = False
+			if event.key == pg.K_r:
+				game_instance.new_game()
+				fontColor = (255,255,255)
+				set_up_board(pieces, game_instance.get_current_setup())
 		
 		if event.type == MOUSEBUTTONDOWN:
 			try:
-				if moving_piece is not None:
-					moving_piece.move_to_square(current_square)
-					moving_piece.zoom_out()
-					moving_piece = None
+				if selected_piece is None:
+					selected_piece = get_sprite_by_square(current_square)
+					print("Cur:", current_square)
+					if victory_reason is not None:
+						raise Exception('game is over: %s' % victory_reason)
+					if selected_piece.type * current_turn < 0:
+						raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
+					
+					selected_piece.zoom_in()
 				else:
-					for s in pieces.sprites():
-						if s.square == current_square:
-							moving_piece = s
-							moving_piece.zoom_in()
-							break
-						else:
-							moving_piece = None
+					if victory_reason is not None:
+						raise Exception('game is over: %s' % victory_reason)
+					if selected_piece.type * current_turn < 0:
+						raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
+					
+					(removed_pieces, new_current_turn, new_victory_reason) = game_instance.move(selected_piece.square, current_square)
+					
+					for square in removed_pieces:
+						print("Rem:", square)
+						get_sprite_by_square(square).kill()
+					
+					selected_piece.move_to_square(current_square)
+					selected_piece.zoom_out()
+					selected_piece = None
+					
+					print(game_instance.board[0])
+					print(game_instance.board[1])
+					print(game_instance.board[2])
+					print(game_instance.board[3])
+					print(game_instance.board[4])
+					print(game_instance.board[5])
+					print(game_instance.board[6])
+					
+					current_turn = new_current_turn
+					victory_reason = new_victory_reason
+					
 			except Exception as e:
+				if selected_piece is not None:
+					selected_piece.zoom_out()
+					selected_piece = None
 				print(e)
-		
-	# Обновление информации о координатах квадрата под курсором
-	current_square = get_board_square(pg.mouse.get_pos())
-	if current_square is not None:
-		text_mouse = "Mouse over (%d, %d)" % (current_square[1], current_square[0])
-	else:
-		text_mouse = "Mouse not over board"
 	
 	pieces.update()
 	
-	#board_img.blit(init_board_img, (0,0))
 	screen.blit(background_img, (0,0))
 	screen.blit(board_img, (outer_margin, outer_margin))
 	pieces.draw(screen)
 	
-	font_img = myFont.render(text_mouse, True, (fontColor))
+	font_img = myFont.render(text, True, (fontColor))
 	screen.blit(font_img, (board_width + 2*outer_margin, outer_margin))
 	
 	pg.display.update()
