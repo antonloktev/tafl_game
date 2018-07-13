@@ -56,7 +56,19 @@ class KingPiece(Piece):
 		Piece.__init__(self, width, grid, square, "sprites\\king.png")
 		self.type = 2
 
-
+class Point(pg.sprite.Sprite):
+	def __init__(self, width, grid, square):		
+		self.grid = grid
+		self.square = square		
+		self.width  = round(width * 0.3)
+		
+		pg.sprite.Sprite.__init__(self)
+		
+		self.image = pg.transform.smoothscale(pg.image.load("sprites\\point.png"), (self.width, self.width))
+		
+		pos = get_square_coordinates(self.square)		
+		self.rect = self.image.get_rect()
+		self.rect.center = (pos[0] + round(self.grid['square_width']/2), pos[1] + round(self.grid['square_width']/2))				
 
 pg.init()
 
@@ -89,6 +101,7 @@ background_img = pg.transform.smoothscale(background_img, (screen_width, screen_
 # Изображение доски
 board_width = round(min(screen_width, screen_height) * board_to_screen_ratio)	# Новая ширина и высота доски в пискелях (после растягивания по окну)
 outer_margin = round((min(screen_width, screen_height) - board_width) / 2)		# Отступ от верхнего левого края окна до верхнего левого угла доски
+right_field_center = round(outer_margin + board_width + (max(screen_width, screen_height) - outer_margin - board_width) / 2)
 board_img = pg.image.load(board_path)
 board_scale_ratio = board_img.get_width()
 board_img = pg.transform.smoothscale(board_img, (board_width, board_width))
@@ -100,11 +113,6 @@ grid = {'inner_margin': grid_inner_margin, 'square_width': grid_square_width, 's
 # Масштабируем в соответствии с размерами окна
 grid['inner_margin'] = round(grid['inner_margin'] * board_scale_ratio) #+ outer_margin
 grid['square_width'] = round(grid['square_width'] * board_scale_ratio)
-
-# Шрифт
-fontSize = 32
-fontColor = (255,255,255)
-myFont = pg.font.Font("freesansbold.ttf", fontSize)
 
 
 def get_board_square(mouse_pos):
@@ -143,12 +151,24 @@ def get_sprite_by_square(square):
 	else:
 		return sprite
 
+		
 # Инициализация объекта игровой партии
 game_instance = GameInstance()
 
 # Инициализация спрайтов
+valid_moves = pg.sprite.Group()
 pieces = pg.sprite.Group()
 set_up_board(pieces, game_instance.get_current_setup())
+
+# Шрифты
+upper_size  = 24 #18
+main_size   = 42 #36
+bottom_size = 20 #20
+main_color = (255,255,255)
+
+upper_font  = pg.font.Font("freesansbold.ttf", upper_size)
+main_font   = pg.font.Font("freesansbold.ttf", main_size)
+bottom_font = pg.font.Font("freesansbold.ttf", bottom_size)
 
 selected_piece = None
 
@@ -161,11 +181,25 @@ while mainLoop:
 	current_turn = game_instance.get_current_turn()
 	victory_reason = game_instance.get_victory_reason()
 	
-	if victory_reason is None:
-		text = "%s's turn" % ("Defender" if current_turn > 0 else "Attacker")
-	else:
-		fontColor = (255,0,0)
-		text = victory_reason
+	if victory_reason is None:		
+		upper_text = "Сейчас ходят"
+		upper_color = (255,255,255)
+		main_text = "ЗАЩИТНИКИ" if current_turn > 0 else "АТАКУЮЩИЕ"
+		main_color = (255,255,255)
+		bottom_text = ""
+		bottom_color = (255,255,255)
+	else:		
+		upper_text = "Победили"
+		upper_color = (255,255,255)
+		main_text = "ЗАЩИТНИКИ!" if victory_reason > 0 else "АТАКУЮЩИЕ!"
+		main_color = (180,255,180) if victory_reason > 0 else (255,200,200)
+		if abs(victory_reason) ==  1:
+			bottom_text = "Королю удалось сбежать" if victory_reason > 0 else "Король был захвачен"
+		elif abs(victory_reason) ==  2:
+			bottom_text = "%s уничтожили врагов" % ("Защитники" if victory_reason > 0 else "Атакующие")
+		else:		
+			bottom_text = "%s окружили врагов" % ("Защитники" if victory_reason > 0 else "Атакующие")
+		bottom_color = (255,255,255)
 	
 	# События
 	for event in pg.event.get():
@@ -173,40 +207,54 @@ while mainLoop:
 		if event.type == QUIT:
 			mainLoop = False
 		if event.type == pg.KEYDOWN:
-			if event.key == pg.K_ESCAPE:
+			if event.key == pg.K_ESCAPE or event.key == pg.K_q:
 				mainLoop = False
 			if event.key == pg.K_r:
 				game_instance.new_game()
-				fontColor = (255,255,255)
+				valid_moves.empty()
 				set_up_board(pieces, game_instance.get_current_setup())
+				upper_text = "Сейчас ходят"
+				upper_color = (255,255,255)
+				main_text = "ЗАЩИТНИКИ" if current_turn > 0 else "АТАКУЮЩИЕ"
+				main_color = (255,255,255)
+				bottom_text = ""
+				bottom_color = (255,255,255)				
 		
 		if event.type == MOUSEBUTTONDOWN:
 			try:
+				if current_square is None:
+					raise Exception('mouse not over the board')
 				if selected_piece is None:
 					selected_piece = get_sprite_by_square(current_square)
-					print("Cur:", current_square)
+					#print("Cur:", current_square)
 					if victory_reason is not None:
 						raise Exception('game is over: %s' % victory_reason)
 					if selected_piece.type * current_turn < 0:
 						raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
 					
 					selected_piece.zoom_in()
+					
+					valid_moves.empty()
+					for s in game_instance.get_list_of_valid_moves(current_square):
+						m = Point(grid['square_width'], grid, s)
+						valid_moves.add(m)
+					
 				else:
 					if victory_reason is not None:
-						raise Exception('game is over: %s' % victory_reason)
+						raise Exception('this game is over')
 					if selected_piece.type * current_turn < 0:
 						raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
 					
 					(removed_pieces, new_current_turn, new_victory_reason) = game_instance.move(selected_piece.square, current_square)
 					
 					for square in removed_pieces:
-						print("Rem:", square)
+						#print("Rem:", square)
 						get_sprite_by_square(square).kill()
 					
 					selected_piece.move_to_square(current_square)
 					selected_piece.zoom_out()
 					selected_piece = None
-					
+					'''
 					print(game_instance.board[0])
 					print(game_instance.board[1])
 					print(game_instance.board[2])
@@ -214,24 +262,41 @@ while mainLoop:
 					print(game_instance.board[4])
 					print(game_instance.board[5])
 					print(game_instance.board[6])
-					
+					'''
+					valid_moves.empty()
 					current_turn = new_current_turn
 					victory_reason = new_victory_reason
 					
 			except Exception as e:
+				valid_moves.empty()
 				if selected_piece is not None:
 					selected_piece.zoom_out()
 					selected_piece = None
 				print(e)
-	
+				
 	pieces.update()
 	
 	screen.blit(background_img, (0,0))
 	screen.blit(board_img, (outer_margin, outer_margin))
 	pieces.draw(screen)
+	valid_moves.draw(screen)
 	
-	font_img = myFont.render(text, True, (fontColor))
-	screen.blit(font_img, (board_width + 2*outer_margin, outer_margin))
+	
+	upper_text_img   =  upper_font.render(upper_text,  True, (upper_color))
+	main_text_img    =   main_font.render(main_text,   True, (main_color))
+	bottom_text_img  = bottom_font.render(bottom_text, True, (bottom_color))	
+	upper_text_rect = upper_text_img.get_rect()
+	upper_text_rect.centerx = right_field_center
+	upper_text_rect.centery = outer_margin + round(board_width/100) * 10
+	main_text_rect = main_text_img.get_rect()
+	main_text_rect.centerx = right_field_center
+	main_text_rect.centery = outer_margin + round(board_width/100) * 15
+	bottom_text_rect = bottom_text_img.get_rect()
+	bottom_text_rect.centerx = right_field_center
+	bottom_text_rect.centery = outer_margin + round(board_width/100) * 21
+	screen.blit(upper_text_img, upper_text_rect)
+	screen.blit(main_text_img, main_text_rect)
+	screen.blit(bottom_text_img, bottom_text_rect)
 	
 	pg.display.update()
 	
