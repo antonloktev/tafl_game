@@ -84,9 +84,9 @@ grid_square_width = 21.75	# ширина клетки в пикселях
 grid_squares_num  = 11 		# ширина доски в клетках
 '''
 board_path = "board_2.png"
-grid_inner_margin = 14#150		# пикселей до верхнего левого угла верхней левой клетки
-grid_square_width = 138#99		# ширина клетки в пикселях
-grid_squares_num  = 7 		# ширина доски в клетках
+grid_inner_margin = 14  #150	# пикселей до верхнего левого угла верхней левой клетки
+grid_square_width = 138 #99		# ширина клетки в пикселях
+grid_squares_num  = 7	#11		# ширина доски в клетках
 
 # ============================= #
 
@@ -164,13 +164,25 @@ set_up_board(pieces, game_instance.get_current_setup())
 upper_size  = 24 #18
 main_size   = 42 #36
 bottom_size = 20 #20
-main_color = (255,255,255)
+score_size  = 88
+hint1_size  = 28
+
+NEUTRAL_COLOR   = (255,255,255)
+DULL_COLOR      = (215,215,215)
+ATTACKERS_COLOR = (255,190,190)
+DEFENDERS_COLOR = (180,255,180)
 
 upper_font  = pg.font.Font("freesansbold.ttf", upper_size)
 main_font   = pg.font.Font("freesansbold.ttf", main_size)
 bottom_font = pg.font.Font("freesansbold.ttf", bottom_size)
+score_font  = pg.font.Font("freesansbold.ttf", score_size)
+hint1_font  = pg.font.Font("freesansbold.ttf", hint1_size)
 
 selected_piece = None
+r_resets_score = True
+no_moves_commited = True
+wins_attackers = 0
+wins_defenders = 0
 
 mainLoop = True
 while mainLoop:
@@ -183,24 +195,33 @@ while mainLoop:
 	
 	if victory_reason is None:		
 		upper_text = "Сейчас ходят"
-		upper_color = (255,255,255)
+		upper_color = NEUTRAL_COLOR
 		main_text = "ЗАЩИТНИКИ" if current_turn > 0 else "АТАКУЮЩИЕ"
-		main_color = (255,255,255)
+		main_color = NEUTRAL_COLOR
 		bottom_text = ""
-		bottom_color = (255,255,255)
+		bottom_color = NEUTRAL_COLOR
+		score_text = "%d – %d" % (wins_defenders, wins_attackers)
+		score_сolor = DULL_COLOR
+		r_resets_score = (wins_defenders + wins_attackers > 0)
+		hint1_text = "(R) Сбросить счет" if r_resets_score else "(R) Новая игра" if not no_moves_commited else ""
 	else:		
+		winner_color = DEFENDERS_COLOR if victory_reason > 0 else ATTACKERS_COLOR
 		upper_text = "Победили"
-		upper_color = (255,255,255)
+		upper_color = NEUTRAL_COLOR
 		main_text = "ЗАЩИТНИКИ!" if victory_reason > 0 else "АТАКУЮЩИЕ!"
-		main_color = (180,255,180) if victory_reason > 0 else (255,200,200)
+		main_color = winner_color
 		if abs(victory_reason) ==  1:
-			bottom_text = "Королю удалось сбежать" if victory_reason > 0 else "Король был захвачен"
+			bottom_text = "Королю удалось сбежать" if victory_reason > 0 else "Король попал в плен"
 		elif abs(victory_reason) ==  2:
 			bottom_text = "%s уничтожили врагов" % ("Защитники" if victory_reason > 0 else "Атакующие")
 		else:		
 			bottom_text = "%s окружили врагов" % ("Защитники" if victory_reason > 0 else "Атакующие")
-		bottom_color = (255,255,255)
-	
+		bottom_color = NEUTRAL_COLOR		
+		score_text = "%d – %d" % (wins_defenders, wins_attackers)
+		score_сolor = winner_color
+		r_resets_score = False
+		hint1_text = "(R) Следующая игра"
+		
 	# События
 	for event in pg.event.get():
 		
@@ -210,15 +231,20 @@ while mainLoop:
 			if event.key == pg.K_ESCAPE or event.key == pg.K_q:
 				mainLoop = False
 			if event.key == pg.K_r:
+				if r_resets_score:
+					wins_attackers = 0
+					wins_defenders = 0
+				if wins_attackers + wins_defenders == 0:
+					no_moves_commited = True
 				game_instance.new_game()
 				valid_moves.empty()
 				set_up_board(pieces, game_instance.get_current_setup())
 				upper_text = "Сейчас ходят"
-				upper_color = (255,255,255)
+				upper_color = NEUTRAL_COLOR
 				main_text = "ЗАЩИТНИКИ" if current_turn > 0 else "АТАКУЮЩИЕ"
-				main_color = (255,255,255)
+				main_color = NEUTRAL_COLOR
 				bottom_text = ""
-				bottom_color = (255,255,255)				
+				bottom_color = NEUTRAL_COLOR
 		
 		if event.type == MOUSEBUTTONDOWN:
 			try:
@@ -246,6 +272,7 @@ while mainLoop:
 						raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
 					
 					(removed_pieces, new_current_turn, new_victory_reason) = game_instance.move(selected_piece.square, current_square)
+					no_moves_commited = False
 					
 					for square in removed_pieces:
 						#print("Rem:", square)
@@ -266,7 +293,10 @@ while mainLoop:
 					valid_moves.empty()
 					current_turn = new_current_turn
 					victory_reason = new_victory_reason
-					
+					if victory_reason is not None and victory_reason > 0:
+						wins_defenders += 1
+					elif victory_reason is not None and victory_reason < 0:
+						wins_attackers += 1
 			except Exception as e:
 				valid_moves.empty()
 				if selected_piece is not None:
@@ -281,10 +311,12 @@ while mainLoop:
 	pieces.draw(screen)
 	valid_moves.draw(screen)
 	
-	
+	# Отрисовка текста справа от доски
 	upper_text_img   =  upper_font.render(upper_text,  True, (upper_color))
 	main_text_img    =   main_font.render(main_text,   True, (main_color))
-	bottom_text_img  = bottom_font.render(bottom_text, True, (bottom_color))	
+	bottom_text_img  = bottom_font.render(bottom_text, True, (bottom_color))
+	score_text_img   =  score_font.render(score_text,  True, (score_сolor))
+	hint1_text_img   =  hint1_font.render(hint1_text,  True, (NEUTRAL_COLOR))
 	upper_text_rect = upper_text_img.get_rect()
 	upper_text_rect.centerx = right_field_center
 	upper_text_rect.centery = outer_margin + round(board_width/100) * 10
@@ -294,9 +326,17 @@ while mainLoop:
 	bottom_text_rect = bottom_text_img.get_rect()
 	bottom_text_rect.centerx = right_field_center
 	bottom_text_rect.centery = outer_margin + round(board_width/100) * 21
+	score_text_rect = score_text_img.get_rect()
+	score_text_rect.centerx = right_field_center
+	score_text_rect.centery = outer_margin + round(board_width/100) * 42
+	hint1_text_rect = hint1_text_img.get_rect()
+	hint1_text_rect.centerx = right_field_center
+	hint1_text_rect.centery = outer_margin + round(board_width/100) * 90
 	screen.blit(upper_text_img, upper_text_rect)
 	screen.blit(main_text_img, main_text_rect)
 	screen.blit(bottom_text_img, bottom_text_rect)
+	screen.blit(score_text_img, score_text_rect)
+	screen.blit(hint1_text_img, hint1_text_rect)
 	
 	pg.display.update()
 	
