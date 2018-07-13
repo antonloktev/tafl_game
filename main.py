@@ -165,7 +165,7 @@ upper_size  = 24 #18
 main_size   = 42 #36
 bottom_size = 20 #20
 score_size  = 88
-hint1_size  = 28
+hint_size  = 28
 
 NEUTRAL_COLOR   = (255,255,255)
 DULL_COLOR      = (215,215,215)
@@ -176,11 +176,14 @@ upper_font  = pg.font.Font("freesansbold.ttf", upper_size)
 main_font   = pg.font.Font("freesansbold.ttf", main_size)
 bottom_font = pg.font.Font("freesansbold.ttf", bottom_size)
 score_font  = pg.font.Font("freesansbold.ttf", score_size)
-hint1_font  = pg.font.Font("freesansbold.ttf", hint1_size)
+hint_font  = pg.font.Font("freesansbold.ttf", hint_size)
+
+hint2_text = "(R) Правила игры"
 
 selected_piece = None
-r_resets_score = True
+n_resets_score = True
 no_moves_commited = True
+rule_screen = False
 wins_attackers = 0
 wins_defenders = 0
 
@@ -202,8 +205,8 @@ while mainLoop:
 		bottom_color = NEUTRAL_COLOR
 		score_text = "%d – %d" % (wins_defenders, wins_attackers)
 		score_сolor = DULL_COLOR
-		r_resets_score = (wins_defenders + wins_attackers > 0)
-		hint1_text = "(R) Сбросить счет" if r_resets_score else "(R) Новая игра" if not no_moves_commited else ""
+		n_resets_score = (wins_defenders + wins_attackers > 0)
+		hint1_text = "(N) Сбросить счет" if n_resets_score else "(N) Новая игра" if not no_moves_commited else ""
 	else:		
 		winner_color = DEFENDERS_COLOR if victory_reason > 0 else ATTACKERS_COLOR
 		upper_text = "Победили"
@@ -219,8 +222,8 @@ while mainLoop:
 		bottom_color = NEUTRAL_COLOR		
 		score_text = "%d – %d" % (wins_defenders, wins_attackers)
 		score_сolor = winner_color
-		r_resets_score = False
-		hint1_text = "(R) Следующая игра"
+		n_resets_score = False
+		hint1_text = "(N) Следующая игра"
 		
 	# События
 	for event in pg.event.get():
@@ -231,112 +234,126 @@ while mainLoop:
 			if event.key == pg.K_ESCAPE or event.key == pg.K_q:
 				mainLoop = False
 			if event.key == pg.K_r:
-				if r_resets_score:
-					wins_attackers = 0
-					wins_defenders = 0
-				if wins_attackers + wins_defenders == 0:
-					no_moves_commited = True
-				game_instance.new_game()
-				valid_moves.empty()
-				set_up_board(pieces, game_instance.get_current_setup())
-				upper_text = "Сейчас ходят"
-				upper_color = NEUTRAL_COLOR
-				main_text = "ЗАЩИТНИКИ" if current_turn > 0 else "АТАКУЮЩИЕ"
-				main_color = NEUTRAL_COLOR
-				bottom_text = ""
-				bottom_color = NEUTRAL_COLOR
+				rule_screen = not(rule_screen)
+			if event.key == pg.K_n:
+				if not(rule_screen):
+					if n_resets_score:
+						wins_attackers = 0
+						wins_defenders = 0
+					if wins_attackers + wins_defenders == 0:
+						no_moves_commited = True
+					game_instance.new_game()
+					valid_moves.empty()
+					set_up_board(pieces, game_instance.get_current_setup())
+					upper_text = "Сейчас ходят"
+					upper_color = NEUTRAL_COLOR
+					main_text = "ЗАЩИТНИКИ" if current_turn > 0 else "АТАКУЮЩИЕ"
+					main_color = NEUTRAL_COLOR
+					bottom_text = ""
+					bottom_color = NEUTRAL_COLOR
 		
 		if event.type == MOUSEBUTTONDOWN:
-			try:
-				if current_square is None:
-					raise Exception('mouse not over the board')
-				if selected_piece is None:
-					selected_piece = get_sprite_by_square(current_square)
-					#print("Cur:", current_square)
-					if victory_reason is not None:
-						raise Exception('game is over: %s' % victory_reason)
-					if selected_piece.type * current_turn < 0:
-						raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
-					
-					selected_piece.zoom_in()
-					
+			if not(rule_screen):
+				try:
+					if current_square is None:
+						raise Exception('mouse not over the board')
+					if selected_piece is None:
+						selected_piece = get_sprite_by_square(current_square)
+						#print("Cur:", current_square)
+						if victory_reason is not None:
+							raise Exception('game is over: %s' % victory_reason)
+						if selected_piece.type * current_turn < 0:
+							raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
+						
+						selected_piece.zoom_in()
+						
+						valid_moves.empty()
+						for s in game_instance.get_list_of_valid_moves(current_square):
+							m = Point(grid['square_width'], grid, s)
+							valid_moves.add(m)
+						
+					else:
+						if victory_reason is not None:
+							raise Exception('this game is over')
+						if selected_piece.type * current_turn < 0:
+							raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
+						
+						(removed_pieces, new_current_turn, new_victory_reason) = game_instance.move(selected_piece.square, current_square)
+						no_moves_commited = False
+						
+						for square in removed_pieces:
+							#print("Rem:", square)
+							get_sprite_by_square(square).kill()
+						
+						selected_piece.move_to_square(current_square)
+						selected_piece.zoom_out()
+						selected_piece = None
+						'''
+						print(game_instance.board[0])
+						print(game_instance.board[1])
+						print(game_instance.board[2])
+						print(game_instance.board[3])
+						print(game_instance.board[4])
+						print(game_instance.board[5])
+						print(game_instance.board[6])
+						'''
+						valid_moves.empty()
+						current_turn = new_current_turn
+						victory_reason = new_victory_reason
+						if victory_reason is not None and victory_reason > 0:
+							wins_defenders += 1
+						elif victory_reason is not None and victory_reason < 0:
+							wins_attackers += 1
+				except Exception as e:
 					valid_moves.empty()
-					for s in game_instance.get_list_of_valid_moves(current_square):
-						m = Point(grid['square_width'], grid, s)
-						valid_moves.add(m)
-					
-				else:
-					if victory_reason is not None:
-						raise Exception('this game is over')
-					if selected_piece.type * current_turn < 0:
-						raise Exception('could not select piece at (%d, %d): other player''s move' % current_square)
-					
-					(removed_pieces, new_current_turn, new_victory_reason) = game_instance.move(selected_piece.square, current_square)
-					no_moves_commited = False
-					
-					for square in removed_pieces:
-						#print("Rem:", square)
-						get_sprite_by_square(square).kill()
-					
-					selected_piece.move_to_square(current_square)
-					selected_piece.zoom_out()
-					selected_piece = None
-					'''
-					print(game_instance.board[0])
-					print(game_instance.board[1])
-					print(game_instance.board[2])
-					print(game_instance.board[3])
-					print(game_instance.board[4])
-					print(game_instance.board[5])
-					print(game_instance.board[6])
-					'''
-					valid_moves.empty()
-					current_turn = new_current_turn
-					victory_reason = new_victory_reason
-					if victory_reason is not None and victory_reason > 0:
-						wins_defenders += 1
-					elif victory_reason is not None and victory_reason < 0:
-						wins_attackers += 1
-			except Exception as e:
-				valid_moves.empty()
-				if selected_piece is not None:
-					selected_piece.zoom_out()
-					selected_piece = None
-				print(e)
+					if selected_piece is not None:
+						selected_piece.zoom_out()
+						selected_piece = None
+					print(e)
+			else:
+				rule_screen = False
 				
 	pieces.update()
 	
 	screen.blit(background_img, (0,0))
-	screen.blit(board_img, (outer_margin, outer_margin))
-	pieces.draw(screen)
-	valid_moves.draw(screen)
-	
-	# Отрисовка текста справа от доски
-	upper_text_img   =  upper_font.render(upper_text,  True, (upper_color))
-	main_text_img    =   main_font.render(main_text,   True, (main_color))
-	bottom_text_img  = bottom_font.render(bottom_text, True, (bottom_color))
-	score_text_img   =  score_font.render(score_text,  True, (score_сolor))
-	hint1_text_img   =  hint1_font.render(hint1_text,  True, (NEUTRAL_COLOR))
-	upper_text_rect = upper_text_img.get_rect()
-	upper_text_rect.centerx = right_field_center
-	upper_text_rect.centery = outer_margin + round(board_width/100) * 10
-	main_text_rect = main_text_img.get_rect()
-	main_text_rect.centerx = right_field_center
-	main_text_rect.centery = outer_margin + round(board_width/100) * 15
-	bottom_text_rect = bottom_text_img.get_rect()
-	bottom_text_rect.centerx = right_field_center
-	bottom_text_rect.centery = outer_margin + round(board_width/100) * 21
-	score_text_rect = score_text_img.get_rect()
-	score_text_rect.centerx = right_field_center
-	score_text_rect.centery = outer_margin + round(board_width/100) * 42
-	hint1_text_rect = hint1_text_img.get_rect()
-	hint1_text_rect.centerx = right_field_center
-	hint1_text_rect.centery = outer_margin + round(board_width/100) * 90
-	screen.blit(upper_text_img, upper_text_rect)
-	screen.blit(main_text_img, main_text_rect)
-	screen.blit(bottom_text_img, bottom_text_rect)
-	screen.blit(score_text_img, score_text_rect)
-	screen.blit(hint1_text_img, hint1_text_rect)
+	if rule_screen:
+		screen.blit(pg.image.load("rules.png"), (0,0))
+	else:
+		screen.blit(board_img, (outer_margin, outer_margin))
+		pieces.draw(screen)
+		valid_moves.draw(screen)
+		
+		# Отрисовка текста справа от доски
+		upper_text_img   =  upper_font.render(upper_text,  True, (upper_color))
+		main_text_img    =   main_font.render(main_text,   True, (main_color))
+		bottom_text_img  = bottom_font.render(bottom_text, True, (bottom_color))
+		score_text_img   =  score_font.render(score_text,  True, (score_сolor))
+		hint1_text_img   =   hint_font.render(hint1_text,  True, (NEUTRAL_COLOR))
+		hint2_text_img   =   hint_font.render(hint2_text,  True, (NEUTRAL_COLOR))
+		upper_text_rect = upper_text_img.get_rect()
+		upper_text_rect.centerx = right_field_center
+		upper_text_rect.centery = outer_margin + round(board_width/100) * 10
+		main_text_rect = main_text_img.get_rect()
+		main_text_rect.centerx = right_field_center
+		main_text_rect.centery = outer_margin + round(board_width/100) * 15
+		bottom_text_rect = bottom_text_img.get_rect()
+		bottom_text_rect.centerx = right_field_center
+		bottom_text_rect.centery = outer_margin + round(board_width/100) * 21
+		score_text_rect = score_text_img.get_rect()
+		score_text_rect.centerx = right_field_center
+		score_text_rect.centery = outer_margin + round(board_width/100) * 42
+		hint1_text_rect = hint1_text_img.get_rect()
+		hint1_text_rect.centerx = right_field_center
+		hint1_text_rect.centery = outer_margin + round(board_width/100) * 85
+		hint2_text_rect = hint2_text_img.get_rect()
+		hint2_text_rect.centerx = right_field_center
+		hint2_text_rect.centery = outer_margin + round(board_width/100) * 90
+		screen.blit(upper_text_img, upper_text_rect)
+		screen.blit(main_text_img, main_text_rect)
+		screen.blit(bottom_text_img, bottom_text_rect)
+		screen.blit(score_text_img, score_text_rect)
+		screen.blit(hint1_text_img, hint1_text_rect)
+		screen.blit(hint2_text_img, hint2_text_rect)
 	
 	pg.display.update()
 	
